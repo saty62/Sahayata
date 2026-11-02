@@ -1,0 +1,701 @@
+'use client';
+
+import React, { useState } from 'react';
+import Link from 'next/link';
+import {
+  Sparkles,
+  CheckCircle2,
+  XCircle,
+  HelpCircle,
+  ArrowRight,
+  RotateCcw,
+  Phone,
+  FileText,
+  Calendar,
+  AlertTriangle,
+  Bot,
+  ListFilter,
+  Check,
+} from 'lucide-react';
+import { api } from '@/lib/api';
+import { EligibilityEvaluationResponse, SchemeMatchResult } from '@/types';
+import HelpCallbackModal from '@/components/HelpCallbackModal';
+
+const MP_DISTRICTS = [
+  'Bhopal',
+  'Sehore',
+  'Raisen',
+  'Rajgarh',
+  'Vidisha',
+  'Hoshangabad',
+  'Jabalpur',
+  'Indore',
+  'Gwalior',
+];
+
+export default function EligibilityFinderPage() {
+  const [mode, setMode] = useState<'questionnaire' | 'natural'>('questionnaire');
+
+  // Multi-step questionnaire state
+  const [step, setStep] = useState(1);
+  const [age, setAge] = useState<number | ''>(35);
+  const [district, setDistrict] = useState('Bhopal');
+  const [isWidow, setIsWidow] = useState<boolean | null>(null);
+  const [isBpl, setIsBpl] = useState<boolean | null>(null);
+  const [isShgMember, setIsShgMember] = useState<boolean | null>(null);
+  const [isPregnantFirstChild, setIsPregnantFirstChild] = useState<boolean | null>(null);
+
+  // Natural Language State
+  const [naturalQuery, setNaturalQuery] = useState('');
+  const [naturalQueryLoading, setNaturalQueryLoading] = useState(false);
+  const [extractedFacts, setExtractedFacts] = useState<any>(null);
+
+  // Results State
+  const [results, setResults] = useState<EligibilityEvaluationResponse | null>(null);
+  const [evaluating, setEvaluating] = useState(false);
+  const [error, setError] = useState('');
+  const [callbackModalOpen, setCallbackModalOpen] = useState(false);
+  const [selectedSchemeForHelp, setSelectedSchemeForHelp] = useState<string>('');
+
+  // Handle questionnaire submit
+  const handleQuestionnaireSubmit = async () => {
+    setEvaluating(true);
+    setError('');
+    try {
+      const facts = {
+        age: age === '' ? undefined : Number(age),
+        district,
+        isWidow: isWidow ?? undefined,
+        isBpl: isBpl ?? undefined,
+        isShgMember: isShgMember ?? undefined,
+        isPregnantFirstChild: isPregnantFirstChild ?? undefined,
+      };
+
+      const res = await api.checkEligibility(facts);
+      if (res.success) {
+        setResults(res.data);
+      } else {
+        setError(res.message || 'पात्रता जांच में समस्या आई।');
+      }
+    } catch (err: any) {
+      setError(err.message || 'त्रुटि हुई। कृपया पुनः प्रयास करें।');
+    } finally {
+      setEvaluating(false);
+    }
+  };
+
+  // Handle Natural Language Submit
+  const handleNaturalQuerySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!naturalQuery.trim()) return;
+
+    setNaturalQueryLoading(true);
+    setError('');
+    try {
+      const res = await api.parseNaturalQuery(naturalQuery);
+      if (res.success) {
+        setResults(res.data);
+        setExtractedFacts(res.data.extractedFacts);
+      } else {
+        setError(res.message || 'आपके प्रश्न को समझने में कठिनाई हुई।');
+      }
+    } catch (err: any) {
+      setError(err.message || 'AI विश्लेषण में त्रुटि हुई।');
+    } finally {
+      setNaturalQueryLoading(false);
+    }
+  };
+
+  const handleReset = () => {
+    setStep(1);
+    setAge(35);
+    setDistrict('Bhopal');
+    setIsWidow(null);
+    setIsBpl(null);
+    setIsShgMember(null);
+    setIsPregnantFirstChild(null);
+    setNaturalQuery('');
+    setExtractedFacts(null);
+    setResults(null);
+    setError('');
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-10">
+      {/* Page Title & Intro */}
+      <div className="text-center space-y-3">
+        <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-forest/10 text-forest text-xs font-semibold font-hindi">
+          <Sparkles className="w-3.5 h-3.5 text-accent fill-current" />
+          <span>सरल एवं पारदर्शी पात्रता खोजक (Deterministic Rule Engine)</span>
+        </div>
+        <h1 className="font-hindi text-3xl sm:text-4xl font-extrabold text-charcoal">
+          आपके लिए उपयुक्त सरकारी योजना खोजें
+        </h1>
+        <p className="font-hindi text-sm sm:text-base text-charcoal-muted max-w-2xl mx-auto leading-relaxed">
+          कुछ सरल प्रश्नों के उत्तर दें या अपनी परिस्थिति सरल हिंदी में बताएं। हम आपको बताएंगे कि आप किन योजनाओं के लिए पात्र हैं और क्यों।
+        </p>
+      </div>
+
+      {/* Mode Switch Tabs */}
+      <div className="flex justify-center">
+        <div className="bg-white p-1 rounded-2xl border border-[#E8E5DD] shadow-soft-sm flex space-x-1">
+          <button
+            onClick={() => {
+              setMode('questionnaire');
+              setResults(null);
+            }}
+            className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-hindi font-semibold transition-all flex items-center space-x-2 ${
+              mode === 'questionnaire'
+                ? 'bg-forest text-white shadow-soft-sm'
+                : 'text-charcoal-muted hover:text-charcoal'
+            }`}
+          >
+            <ListFilter className="w-4 h-4" />
+            <span>क्रमवार प्रश्नावली (Questionnaire)</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setMode('natural');
+              setResults(null);
+            }}
+            className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-hindi font-semibold transition-all flex items-center space-x-2 ${
+              mode === 'natural'
+                ? 'bg-forest text-white shadow-soft-sm'
+                : 'text-charcoal-muted hover:text-charcoal'
+            }`}
+          >
+            <Bot className="w-4 h-4 text-accent" />
+            <span>AI सरल हिंदी खोज (Natural Language)</span>
+          </button>
+        </div>
+      </div>
+
+      {/* MODE 1: STEP-BY-STEP QUESTIONNAIRE */}
+      {mode === 'questionnaire' && !results && (
+        <div className="bg-white rounded-3xl p-6 sm:p-10 border border-[#E8E5DD] shadow-soft-sm space-y-8">
+          {/* Progress dots */}
+          <div className="flex items-center justify-between pb-6 border-b border-[#E8E5DD]">
+            <span className="text-xs font-bold text-forest font-hindi">
+              चरण {step} / 3: {step === 1 ? 'आयु एवं जिला' : step === 2 ? 'सामाजिक व आर्थिक स्थिति' : 'समूह एवं मातृत्व स्थिति'}
+            </span>
+            <div className="flex space-x-1.5">
+              {[1, 2, 3].map((s) => (
+                <div
+                  key={s}
+                  className={`w-7 h-2 rounded-full transition-colors ${
+                    step >= s ? 'bg-forest' : 'bg-sage/40'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Step 1: Age & District */}
+          {step === 1 && (
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-bold text-charcoal font-hindi mb-2">
+                  1. आपकी आयु (उम्र) कितनी है? (What is your age?) *
+                </label>
+                <div className="flex items-center space-x-4">
+                  <input
+                    type="number"
+                    min={15}
+                    max={100}
+                    value={age}
+                    onChange={(e) => setAge(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
+                    className="w-36 px-4 py-3 rounded-2xl border border-[#E8E5DD] text-lg font-bold text-forest bg-[#FAF9F6] focus:ring-2 focus:ring-forest"
+                  />
+                  <span className="text-sm font-hindi text-charcoal-muted">वर्ष (Years)</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-charcoal font-hindi mb-2">
+                  2. आप मध्य प्रदेश के किस जिले में रहती हैं? (Which district do you reside in?) *
+                </label>
+                <select
+                  value={district}
+                  onChange={(e) => setDistrict(e.target.value)}
+                  className="w-full sm:w-80 px-4 py-3 rounded-2xl border border-[#E8E5DD] text-sm font-hindi text-charcoal bg-[#FAF9F6] focus:ring-2 focus:ring-forest"
+                >
+                  {MP_DISTRICTS.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="pt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setStep(2)}
+                  className="px-6 py-3 rounded-xl bg-forest text-white font-hindi font-semibold text-sm hover:bg-forest-hover transition-colors shadow-soft-sm flex items-center"
+                >
+                  <span>अगला कदम (Next)</span>
+                  <ArrowRight className="w-4 h-4 ml-2" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Widow status & BPL card */}
+          {step === 2 && (
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-bold text-charcoal font-hindi mb-2">
+                  3. क्या आप निराश्रित अथवा विधवा हैं? (Are you a widow or destitute?) *
+                </label>
+                <div className="grid grid-cols-2 gap-3 max-w-sm">
+                  <button
+                    type="button"
+                    onClick={() => setIsWidow(true)}
+                    className={`py-3 rounded-xl text-sm font-hindi font-semibold border transition-all ${
+                      isWidow === true
+                        ? 'bg-forest text-white border-forest'
+                        : 'bg-[#FAF9F6] text-charcoal border-[#E8E5DD] hover:bg-sage/40'
+                    }`}
+                  >
+                    हाँ (Yes)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsWidow(false)}
+                    className={`py-3 rounded-xl text-sm font-hindi font-semibold border transition-all ${
+                      isWidow === false
+                        ? 'bg-forest text-white border-forest'
+                        : 'bg-[#FAF9F6] text-charcoal border-[#E8E5DD] hover:bg-sage/40'
+                    }`}
+                  >
+                    नहीं (No)
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-charcoal font-hindi mb-2">
+                  4. क्या आपके परिवार के पास बीपीएल (गरीबी रेखा) राशन कार्ड है? (Do you have a BPL card?) *
+                </label>
+                <div className="grid grid-cols-2 gap-3 max-w-sm">
+                  <button
+                    type="button"
+                    onClick={() => setIsBpl(true)}
+                    className={`py-3 rounded-xl text-sm font-hindi font-semibold border transition-all ${
+                      isBpl === true
+                        ? 'bg-forest text-white border-forest'
+                        : 'bg-[#FAF9F6] text-charcoal border-[#E8E5DD] hover:bg-sage/40'
+                    }`}
+                  >
+                    हाँ (Yes)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsBpl(false)}
+                    className={`py-3 rounded-xl text-sm font-hindi font-semibold border transition-all ${
+                      isBpl === false
+                        ? 'bg-forest text-white border-forest'
+                        : 'bg-[#FAF9F6] text-charcoal border-[#E8E5DD] hover:bg-sage/40'
+                    }`}
+                  >
+                    नहीं (No)
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-4 flex justify-between">
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className="px-5 py-2.5 rounded-xl border border-[#E8E5DD] text-charcoal font-hindi text-xs"
+                >
+                  पीछे (Back)
+                </button>
+                <button
+                  type="button"
+                  disabled={isWidow === null || isBpl === null}
+                  onClick={() => setStep(3)}
+                  className="px-6 py-3 rounded-xl bg-forest text-white font-hindi font-semibold text-sm hover:bg-forest-hover disabled:opacity-50"
+                >
+                  <span>अगला कदम (Next)</span>
+                  <ArrowRight className="w-4 h-4 ml-2 inline" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: SHG & Pregnancy Status */}
+          {step === 3 && (
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-bold text-charcoal font-hindi mb-2">
+                  5. क्या आप किसी पंजीकृत स्वयं सहायता समूह (SHG) की सक्रिय सदस्य हैं? (Are you an SHG member?) *
+                </label>
+                <div className="grid grid-cols-2 gap-3 max-w-sm">
+                  <button
+                    type="button"
+                    onClick={() => setIsShgMember(true)}
+                    className={`py-3 rounded-xl text-sm font-hindi font-semibold border transition-all ${
+                      isShgMember === true
+                        ? 'bg-forest text-white border-forest'
+                        : 'bg-[#FAF9F6] text-charcoal border-[#E8E5DD] hover:bg-sage/40'
+                    }`}
+                  >
+                    हाँ (Yes)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsShgMember(false)}
+                    className={`py-3 rounded-xl text-sm font-hindi font-semibold border transition-all ${
+                      isShgMember === false
+                        ? 'bg-forest text-white border-forest'
+                        : 'bg-[#FAF9F6] text-charcoal border-[#E8E5DD] hover:bg-sage/40'
+                    }`}
+                  >
+                    नहीं (No)
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-charcoal font-hindi mb-2">
+                  6. क्या आप वर्तमान में अपने पहले बच्चे के साथ गर्भवती हैं? (Are you pregnant with your first child?) *
+                </label>
+                <div className="grid grid-cols-2 gap-3 max-w-sm">
+                  <button
+                    type="button"
+                    onClick={() => setIsPregnantFirstChild(true)}
+                    className={`py-3 rounded-xl text-sm font-hindi font-semibold border transition-all ${
+                      isPregnantFirstChild === true
+                        ? 'bg-forest text-white border-forest'
+                        : 'bg-[#FAF9F6] text-charcoal border-[#E8E5DD] hover:bg-sage/40'
+                    }`}
+                  >
+                    हाँ (Yes)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsPregnantFirstChild(false)}
+                    className={`py-3 rounded-xl text-sm font-hindi font-semibold border transition-all ${
+                      isPregnantFirstChild === false
+                        ? 'bg-forest text-white border-forest'
+                        : 'bg-[#FAF9F6] text-charcoal border-[#E8E5DD] hover:bg-sage/40'
+                    }`}
+                  >
+                    नहीं (No)
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-4 flex justify-between items-center">
+                <button
+                  type="button"
+                  onClick={() => setStep(2)}
+                  className="px-5 py-2.5 rounded-xl border border-[#E8E5DD] text-charcoal font-hindi text-xs"
+                >
+                  पीछे (Back)
+                </button>
+                <button
+                  type="button"
+                  disabled={evaluating || isShgMember === null || isPregnantFirstChild === null}
+                  onClick={handleQuestionnaireSubmit}
+                  className="px-8 py-3.5 rounded-xl bg-forest text-white font-hindi font-bold text-sm hover:bg-forest-hover disabled:opacity-50 shadow-soft-md"
+                >
+                  {evaluating ? 'पात्रता नियम जाँचे जा रहे हैं...' : 'पात्रता परिणाम देखें (View Matches)'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* MODE 2: NATURAL LANGUAGE HINDI QUERY */}
+      {mode === 'natural' && !results && (
+        <div className="bg-white rounded-3xl p-6 sm:p-10 border border-[#E8E5DD] shadow-soft-sm space-y-6">
+          <div className="flex items-center space-x-3 text-forest">
+            <Bot className="w-6 h-6 text-accent" />
+            <h2 className="font-hindi text-xl font-bold text-charcoal">
+              अपनी भाषा में लिखें (Natural Hindi Inquiry)
+            </h2>
+          </div>
+
+          <p className="font-hindi text-sm text-charcoal-muted leading-relaxed">
+            आप अपनी परिस्थिति बोलकर या लिखकर बता सकती हैं। हमारा AI आपके कथनों से आवश्यक तथ्य निकालकर नियमों के आधार पर सही योजनाएं खोजेगा।
+          </p>
+
+          <form onSubmit={handleNaturalQuerySubmit} className="space-y-4">
+            <div className="space-y-2">
+              <textarea
+                rows={4}
+                value={naturalQuery}
+                onChange={(e) => setNaturalQuery(e.target.value)}
+                placeholder="उदा: मेरी उम्र 38 वर्ष है, मैं सीहोर जिले की रहने वाली हूं, मैं विधवा हूं और मेरे पास बीपीएल कार्ड है।"
+                className="w-full p-4 rounded-2xl border border-[#E8E5DD] bg-[#FAF9F6] text-sm text-charcoal font-hindi focus:ring-2 focus:ring-forest leading-relaxed"
+              />
+            </div>
+
+            {/* Sample Prompts */}
+            <div className="space-y-1.5">
+              <span className="text-xs font-semibold text-charcoal-muted font-hindi">
+                नमूना प्रश्न (Click to try sample):
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  'मैं विधवा हूं और मेरे पास बीपीएल कार्ड है।',
+                  'मैं स्वयं सहायता समूह से जुड़ी हूं और छोटा व्यवसाय शुरू करना चाहती हूं।',
+                  'मेरी उम्र 22 साल है और मैं पहले बच्चे से गर्भवती हूं।',
+                ].map((sample, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setNaturalQuery(sample)}
+                    className="text-xs bg-sage/40 hover:bg-sage text-forest px-3 py-1.5 rounded-lg border border-sage-dark/30 font-hindi transition-colors text-left"
+                  >
+                    "{sample}"
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="pt-4 flex justify-end">
+              <button
+                type="submit"
+                disabled={naturalQueryLoading || !naturalQuery.trim()}
+                className="px-8 py-3.5 rounded-xl bg-forest text-white font-hindi font-bold text-sm hover:bg-forest-hover disabled:opacity-50 shadow-soft-sm flex items-center"
+              >
+                <Sparkles className="w-4 h-4 mr-2 text-accent" />
+                <span>{naturalQueryLoading ? 'AI तथ्य निकाल रहा है...' : 'पात्रता खोजें (Analyze & Match)'}</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* RESULTS DISPLAY */}
+      {results && (
+        <div className="space-y-8 animate-in fade-in duration-300">
+          {/* Reset & Summary Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-[#E8E5DD]">
+            <div>
+              <span className="text-xs font-bold text-forest uppercase tracking-wider font-hindi">
+                जांच परिणाम (Evaluation Completed)
+              </span>
+              <h2 className="font-hindi text-xl font-bold text-charcoal mt-0.5">
+                {results.matchingSchemes.length} संभावित उपयुक्त योजनाएं पाई गईं
+              </h2>
+            </div>
+
+            <button
+              onClick={handleReset}
+              className="inline-flex items-center px-4 py-2 rounded-xl border border-[#E8E5DD] text-xs font-semibold font-hindi text-charcoal hover:bg-sage/40 transition-colors self-start sm:self-auto"
+            >
+              <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+              <span>पुनः जांच करें (Reset)</span>
+            </button>
+          </div>
+
+          {/* AI Fact Extraction Feedback (if natural query mode) */}
+          {extractedFacts && (
+            <div className="bg-sage/30 p-5 rounded-2xl border border-sage-dark/30 space-y-2">
+              <div className="flex items-center space-x-2 text-xs font-bold text-forest font-hindi">
+                <Bot className="w-4 h-4 text-forest" />
+                <span>AI द्वारा पहचाने गए आपके तथ्य (Extracted User Facts):</span>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs font-hindi">
+                {extractedFacts.age && <span className="bg-white px-2.5 py-1 rounded-md border border-[#E8E5DD]">आयु: {extractedFacts.age} वर्ष</span>}
+                {extractedFacts.district && <span className="bg-white px-2.5 py-1 rounded-md border border-[#E8E5DD]">जिला: {extractedFacts.district}</span>}
+                {extractedFacts.isWidow && <span className="bg-white px-2.5 py-1 rounded-md border border-[#E8E5DD]">वैवाहिक स्थिति: विधवा</span>}
+                {extractedFacts.isBpl && <span className="bg-white px-2.5 py-1 rounded-md border border-[#E8E5DD]">राशन कार्ड: बीपीएल</span>}
+                {extractedFacts.isShgMember && <span className="bg-white px-2.5 py-1 rounded-md border border-[#E8E5DD]">स्वयं सहायता समूह: सदस्य</span>}
+                {extractedFacts.isPregnantFirstChild && <span className="bg-white px-2.5 py-1 rounded-md border border-[#E8E5DD]">गर्भावस्था: पहला जीवित बच्चा</span>}
+              </div>
+              {extractedFacts.followUpQuestionsHindi && extractedFacts.followUpQuestionsHindi.length > 0 && (
+                <p className="text-xs text-amber-900 font-hindi pt-1">
+                  💡 {extractedFacts.followUpQuestionsHindi[0]}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* MATCHING SCHEMES SECTION */}
+          <div className="space-y-6">
+            <h3 className="font-hindi text-lg font-bold text-forest flex items-center">
+              <CheckCircle2 className="w-5 h-5 mr-2 text-forest" />
+              <span>आपके लिए संभावित रूप से उपयुक्त योजनाएं (Matching Schemes)</span>
+            </h3>
+
+            {results.matchingSchemes.length > 0 ? (
+              <div className="space-y-6">
+                {results.matchingSchemes.map(({ scheme, matchedRules, disclaimerHindi }) => (
+                  <div
+                    key={scheme._id}
+                    className="bg-white rounded-3xl p-6 sm:p-8 border-2 border-forest/30 shadow-soft-md space-y-6"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <span className="font-mono text-xs font-bold text-forest bg-sage px-2 py-0.5 rounded">
+                            {scheme.schemeId}
+                          </span>
+                          <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-forest/10 text-forest">
+                            {scheme.category}
+                          </span>
+                        </div>
+                        <h4 className="font-hindi text-2xl font-bold text-charcoal mt-1">
+                          {scheme.titleHindi}
+                        </h4>
+                        <p className="text-xs text-charcoal-muted">{scheme.titleEnglish}</p>
+                      </div>
+
+                      <div className="bg-emerald-50 text-emerald-800 text-xs font-bold px-3 py-1.5 rounded-xl border border-emerald-200 self-start sm:self-auto">
+                        100% पात्रता नियम मेल खाए
+                      </div>
+                    </div>
+
+                    {/* Benefit Highlight */}
+                    {scheme.benefits && scheme.benefits.length > 0 && (
+                      <div className="bg-[#FAF9F6] p-4 rounded-2xl border border-[#E8E5DD]">
+                        <span className="text-xs font-bold text-forest uppercase tracking-wider font-hindi block mb-1">
+                          मुख्य वित्तीय लाभ:
+                        </span>
+                        <p className="font-hindi text-base font-bold text-forest-dark">
+                          {scheme.benefits[0]}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Explainable Rules Breakdown */}
+                    <div className="space-y-2">
+                      <span className="text-xs font-bold text-charcoal font-hindi">
+                        नियम सत्यापन विवरण (Why this matches you):
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {matchedRules.map((rule, idx) => (
+                          <div
+                            key={idx}
+                            className="bg-emerald-50/60 p-3 rounded-xl border border-emerald-100 flex items-start text-xs font-hindi"
+                          >
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 mr-2 shrink-0 mt-0.5" />
+                            <div>
+                              <span className="font-bold text-emerald-900">{rule.ruleNameHindi}: </span>
+                              <span className="text-emerald-800">{rule.requiredCondition} (आपकी जानकारी: {rule.userValue})</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Documents checklist */}
+                    {scheme.documents && scheme.documents.length > 0 && (
+                      <div className="space-y-2">
+                        <span className="text-xs font-bold text-charcoal font-hindi">
+                          आवेदन हेतु आवश्यक दस्तावेज़:
+                        </span>
+                        <div className="flex flex-wrap gap-2 text-xs font-hindi">
+                          {scheme.documents.map((doc, idx) => (
+                            <span key={idx} className="bg-[#FAF9F6] px-3 py-1.5 rounded-lg border border-[#E8E5DD]">
+                              📄 {doc}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Mandatory Disclaimer */}
+                    <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-200/70 flex items-start space-x-3 text-xs font-hindi text-amber-900">
+                      <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                      <p className="leading-relaxed">
+                        {disclaimerHindi}
+                      </p>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                      <Link
+                        href={`/schemes/${scheme._id}`}
+                        className="inline-flex items-center px-4 py-2.5 rounded-xl bg-forest text-white text-xs font-hindi font-semibold hover:bg-forest-hover"
+                      >
+                        <span>संपूर्ण विवरण एवं आवेदन चरण देखें</span>
+                        <ArrowRight className="w-4 h-4 ml-1.5" />
+                      </Link>
+
+                      <button
+                        onClick={() => {
+                          setSelectedSchemeForHelp(scheme.titleHindi);
+                          setCallbackModalOpen(true);
+                        }}
+                        className="inline-flex items-center px-4 py-2.5 rounded-xl border border-forest text-forest text-xs font-hindi font-semibold hover:bg-sage/40"
+                      >
+                        <Phone className="w-4 h-4 mr-1.5" />
+                        <span>इस योजना के लिए सहायता कॉल मांगें</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="bg-white p-8 rounded-3xl border border-[#E8E5DD] text-center space-y-2">
+                <p className="font-hindi text-base font-semibold text-charcoal">
+                  दी गई जानकारी के अनुसार कोई सीधी योजना नहीं मिली।
+                </p>
+                <p className="font-hindi text-xs text-charcoal-muted">
+                  नीचे दी गई अन्य योजनाओं के नियम देखें अथवा हेल्पलाइन पर संपर्क करें।
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* OTHER SCHEMES & UNSATISFIED CONDITIONS */}
+          {results.otherSchemes.length > 0 && (
+            <div className="space-y-4 pt-4 border-t border-[#E8E5DD]">
+              <h3 className="font-hindi text-base font-bold text-charcoal-muted">
+                अन्य योजनाएं जो पूर्णतः मेल नहीं खातीं (Conditions Not Met)
+              </h3>
+
+              <div className="space-y-4">
+                {results.otherSchemes.map(({ scheme, unmatchedRules }) => (
+                  <div
+                    key={scheme._id}
+                    className="bg-white/70 p-5 rounded-2xl border border-[#E8E5DD] space-y-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-hindi text-base font-bold text-charcoal">
+                        {scheme.titleHindi} ({scheme.category})
+                      </h4>
+                      <Link
+                        href={`/schemes/${scheme._id}`}
+                        className="text-xs font-hindi text-forest hover:underline"
+                      >
+                        विवरण देखें →
+                      </Link>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-xs font-medium text-charcoal-muted font-hindi">
+                        अपूर्ण शर्तें (Missing Conditions):
+                      </span>
+                      {unmatchedRules.map((rule, idx) => (
+                        <div key={idx} className="flex items-center text-xs font-hindi text-stone-600">
+                          <XCircle className="w-3.5 h-3.5 text-stone-400 mr-2 shrink-0" />
+                          <span>{rule.requiredCondition} (वर्तमान में: {rule.userValue})</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Free Callback Modal */}
+      <HelpCallbackModal
+        isOpen={callbackModalOpen}
+        onClose={() => setCallbackModalOpen(false)}
+        schemeTitle={selectedSchemeForHelp}
+      />
+    </div>
+  );
+}
