@@ -236,3 +236,87 @@ export const getAuditLogs = async (req: Request, res: Response): Promise<void> =
     res.status(500).json({ success: false, message: error.message || 'Error fetching audit logs' });
   }
 };
+
+export const getAdminReports = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { financialYear } = req.query;
+
+    const [
+      donationsByMode,
+      donationsByCampaign,
+      monthlyBreakdown,
+      taxEligibilitySummary,
+    ] = await Promise.all([
+      Donation.aggregate([
+        { $match: { paymentStatus: 'COMPLETED' } },
+        { $group: { _id: '$paymentMode', totalAmount: { $sum: '$amount' }, count: { $sum: 1 } } },
+      ]),
+      Donation.aggregate([
+        { $match: { paymentStatus: 'COMPLETED' } },
+        {
+          $group: {
+            _id: '$campaignId',
+            totalAmount: { $sum: '$amount' },
+            count: { $sum: 1 },
+          },
+        },
+        {
+          $lookup: {
+            from: 'campaigns',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'campaign',
+          },
+        },
+        { $unwind: { path: '$campaign', preserveNullAndEmptyArrays: true } },
+        {
+          $project: {
+            campaignName: '$campaign.name',
+            campaignNameHindi: '$campaign.nameHindi',
+            totalAmount: 1,
+            count: 1,
+          },
+        },
+      ]),
+      Donation.aggregate([
+        { $match: { paymentStatus: 'COMPLETED' } },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } },
+            totalAmount: { $sum: '$amount' },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ]),
+      Donation.aggregate([
+        { $match: { paymentStatus: 'COMPLETED' } },
+        {
+          $group: {
+            _id: { $cond: [{ $ifNull: ['$donorPan', false] }, 'WITH_PAN_80G', 'FORM_60_OR_NO_PAN'] },
+            totalAmount: { $sum: '$amount' },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        financialYear: financialYear || 'FY2026-27',
+        donationsByMode,
+        donationsByCampaign,
+        monthlyBreakdown,
+        taxEligibilitySummary,
+        form10BDStatus: {
+          exportAvailable: true,
+          exportUrl: '/api/admin/reports/form-10bd/export',
+        },
+      },
+    });
+  } catch (error: any) {
+    logger.error('Error generating admin reports:', error);
+    res.status(500).json({ success: false, message: error.message || 'Error generating reports' });
+  }
+};

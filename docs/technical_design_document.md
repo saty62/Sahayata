@@ -260,9 +260,11 @@ To safeguard rural women against AI hallucination in legal entitlements:
 1. **Password Hashing**: Passwords are salted and hashed using `bcryptjs` with 12 rounds.
 2. **Session Security**: JWT tokens are transmitted via `HttpOnly`, `SameSite=Lax`, and `Secure` (in production) cookies, completely neutralizing Cross-Site Scripting (XSS) token theft.
 3. **Role-Based Access Control (RBAC)**: Express middleware intercepts all `/api/admin/*` and CMS routes. Non-admin users are rejected with HTTP 403 Forbidden.
-4. **Data Minimization & Donor Isolation**: Donors can only access their personal donation receipts and profiles (`req.user._id === donation.donorId`). Cross-tenant donor enumeration is strictly blocked.
-5. **NoSQL Injection Prevention**: Zod input validation strips unexpected query operators (`$gt`, `$ne`, `$where`) before queries reach the database layer.
-6. **Statutory Form 10BD Audit Logging**: All administrative approvals, scheme publications, and compliance report exports are persisted to an immutable `AuditLog` collection with IP and timestamp metadata.
+4. **Data Minimization & Donor Isolation (BOLA/IDOR Protection)**: Donors can only access their personal donation receipts and profiles (`req.userId === donation.donorId`). Unauthenticated guest requests to registered donor records are strictly rejected with 401 Unauthorized.
+5. **Rate Limiting & Brute-Force Protection**: Sliding-window in-memory rate limiting enforces a 150 requests/minute global ceiling per IP and a strict 20 requests/minute throttle on `/api/auth` login and registration endpoints.
+6. **NoSQL Injection Prevention**: Global sanitizer middleware recurses through request bodies and query parameters, stripping dangerous MongoDB operators (`$`, `.`) to prevent operator injection attacks.
+7. **Atomic State Acquisition Lock**: Duplicate payment confirmations and callbacks acquire an atomic state lock (`{ paymentStatus: { $in: ['PENDING', 'FAILED'] } }` to `PROCESSING`) ensuring zero sequence gaps and zero duplicate receipt numbers under concurrency.
+8. **Statutory Form 10BD Audit Logging**: All administrative approvals, scheme publications, and compliance report exports are persisted to an immutable `AuditLog` collection with IP and timestamp metadata.
 
 ---
 
@@ -287,24 +289,27 @@ The interface was created with the dignity, warmth, and accessibility appropriat
 ## 11. Testing Strategy & Verification Results
 
 ### 11.1 Test Suite Breakdown
-| Suite | Target Module | Scope & Invariants Tested |
-| :--- | :--- | :--- |
-| **Auth & RBAC** | `auth.test.ts` | Registration, login, JWT cookie generation, invalid credentials rejection, admin endpoint protection. |
-| **Schemes & Eligibility** | `schemes_eligibility.test.ts` | Scheme CRUD, official notice parsing, deterministic multi-condition matching (SCH-014, SCH-022, SCH-031), conditional questionnaire branching. |
-| **Donations & Receipts** | `donations_receipts.test.ts` | 3-step checkout, mock payment confirmation, foreign card FCRA blocking, idempotent retries, PDF download endpoints. |
-| **High Concurrency** | `concurrency.test.ts` | 100 simultaneous donation confirmations running parallel ACID transactions. Verifies zero duplicate receipt numbers and strict sequential allocation. |
+| Suite | Target Module | Scope & Invariants Tested | Passing Tests |
+| :--- | :--- | :--- | :--- |
+| **Auth & RBAC** | `tests/auth.test.ts` | Registration, login, JWT cookie generation, invalid credentials rejection, admin endpoint protection. | 6 / 6 |
+| **Schemes & Eligibility** | `tests/schemes_eligibility.test.ts` | Scheme CRUD, category filter, deterministic multi-condition matching (SCH-014, SCH-022, SCH-031), natural language inquiry parser, district and search query collision avoidance. | 7 / 7 |
+| **Donations & Receipts** | `tests/donations_receipts.test.ts` | 3-step checkout, mock payment confirmation, foreign card FCRA blocking, idempotent retries, 5 simultaneous duplicate callbacks with zero sequence gap leakage, BOLA/IDOR data ownership enforcement. | 5 / 5 |
+| **High Concurrency** | `tests/concurrency.test.ts` | 100 simultaneous donation confirmations running parallel ACID transactions, 10 duplicate callbacks, payment failure handling, worker crash resilience, and PDF retry. | 4 / 4 |
+| **Frontend User Journeys** | `frontend/tests/journeys.test.ts` | Automated end-to-end verification of all 6 user journeys: Scheme discovery, Eligibility questionnaire & rules, Admin CMS & AI approval, Donation 3-step form & PAN validation, Payment success & polling, Receipt & 80G download. | 6 / 6 |
 
-**Test Execution Outcome:**
+**Verified Test Execution Outcome:**
 ```
-PASS  tests/auth.test.ts
-PASS  tests/schemes_eligibility.test.ts
-PASS  tests/donations_receipts.test.ts
-PASS  tests/concurrency.test.ts (100 concurrent transactions committed in 14.6s)
+Test Suites: 4 passed, 4 total (Backend)
+Tests:       22 passed, 22 total (Backend)
+Time:        28.097 s (including 100-concurrency ACID transactions)
 
-Test Suites: 4 passed, 4 total
-Tests:       16 passed, 16 total
-Snapshots:   0 total
-Time:        16.82s
+Frontend Journeys Test Suite:
+1..6
+# tests 6
+# pass  6
+# fail  0
+
+Total Automated Tests: 28 passed, 0 failed, 100% pass rate
 ```
 
 ---

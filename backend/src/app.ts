@@ -5,6 +5,7 @@ import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import { config } from './config';
 import { errorHandler } from './middleware/errorHandler';
+import { rateLimiter, authRateLimiter, noSqlSanitizer } from './middleware/security';
 
 import authRoutes from './modules/auth/auth.routes';
 import schemesRoutes from './modules/schemes/schemes.routes';
@@ -45,6 +46,12 @@ app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// NoSQL operator injection sanitizer
+app.use(noSqlSanitizer);
+
+// Global in-memory rate limiter (150 req/min per IP)
+app.use(rateLimiter());
+
 if (process.env.NODE_ENV !== 'test') {
   app.use(morgan('dev'));
 }
@@ -60,8 +67,8 @@ app.get('/api/health', (req: Request, res: Response) => {
   });
 });
 
-// Mount modules
-app.use('/api/auth', authRoutes);
+// Mount modules (auth has dedicated brute-force rate limiter)
+app.use('/api/auth', authRateLimiter, authRoutes);
 app.use('/api/schemes', schemesRoutes);
 app.use('/api/eligibility', eligibilityRoutes);
 app.use('/api/campaigns', campaignsRoutes);

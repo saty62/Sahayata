@@ -111,6 +111,7 @@ export const api = {
     const query = new URLSearchParams(params || {}).toString();
     return fetchJson(`/admin/donations${query ? `?${query}` : ''}`);
   },
+  getAdminReports: (fy?: string) => fetchJson(`/admin/reports${fy ? `?financialYear=${fy}` : ''}`),
   getForm10BDExportUrl: (fy?: string) => `${API_BASE_URL}/admin/reports/form-10bd/export${fy ? `?financialYear=${fy}` : ''}`,
   getAuditLogs: () => fetchJson('/admin/audit-logs'),
 };

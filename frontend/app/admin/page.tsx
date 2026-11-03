@@ -15,24 +15,35 @@ import {
   ExternalLink,
   PlusCircle,
   AlertCircle,
-  FileText
+  FileText,
+  CreditCard,
+  PieChart,
+  BarChart3
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
 export default function AdminDashboardPage() {
   const router = useRouter();
   const [data, setData] = useState<any>(null);
+  const [reports, setReports] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    // Authenticate and load admin dashboard
-    api.getAdminDashboard()
-      .then((res) => {
-        if (res.success) {
-          setData(res.data);
+    // Authenticate and load admin dashboard and financial reports
+    Promise.all([
+      api.getAdminDashboard(),
+      api.getAdminReports().catch(() => ({ success: false })),
+    ])
+      .then(([dashRes, repRes]) => {
+        if (dashRes.success) {
+          setData(dashRes.data);
         } else {
-          setError(res.message || 'एडमिन डेटा लोड नहीं हो सका।');
+          setError(dashRes.message || 'एडमिन डेटा लोड नहीं हो सका।');
+        }
+
+        if (repRes && repRes.success && repRes.data) {
+          setReports(repRes.data);
         }
       })
       .catch((err) => {
@@ -334,6 +345,113 @@ export default function AdminDashboardPage() {
           </div>
         </section>
       </div>
+
+      {/* Financial & Statutory 80G Reports Section (from GET /api/admin/reports) */}
+      {reports && (
+        <section className="bg-white rounded-3xl p-6 sm:p-8 border border-ivory-border shadow-soft-sm space-y-6" aria-labelledby="reports-heading">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-ivory-border">
+            <div>
+              <div className="flex items-center space-x-2 text-xs font-bold text-forest uppercase tracking-wider font-hindi">
+                <BarChart3 className="w-4 h-4 text-forest" />
+                <span>वित्तीय एवं 80G अनुपालन रिपोर्ट ({reports.financialYear})</span>
+              </div>
+              <h2 id="reports-heading" className="font-hindi text-xl font-bold text-charcoal mt-1">
+                दान माध्यम एवं कर छूट विश्लेषण (Analytics & Compliance)
+              </h2>
+            </div>
+
+            <a
+              href={api.getForm10BDExportUrl(reports.financialYear)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center px-4 py-2.5 rounded-xl bg-forest text-white text-xs font-hindi font-bold hover:bg-forest-hover transition-colors shadow-soft-sm touch-target self-start sm:self-auto"
+            >
+              <FileDown className="w-3.5 h-3.5 mr-1.5 text-accent" />
+              <span>{reports.financialYear} फॉर्म 10BD CSV</span>
+            </a>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* 1. Payment Mode Breakdown */}
+            <div className="p-5 rounded-2xl bg-[#FAF9F6] border border-ivory-border space-y-3">
+              <div className="flex items-center space-x-2 text-xs font-bold text-charcoal font-hindi">
+                <CreditCard className="w-4 h-4 text-forest" />
+                <span>भुगतान माध्यमवार संकलन (By Payment Mode)</span>
+              </div>
+
+              {reports.byPaymentMode && reports.byPaymentMode.length > 0 ? (
+                <div className="space-y-2 pt-1">
+                  {reports.byPaymentMode.map((pm: any) => (
+                    <div key={pm.mode} className="flex items-center justify-between text-xs bg-white p-2.5 rounded-xl border border-ivory-border">
+                      <span className="font-mono font-bold text-charcoal">{pm.mode}</span>
+                      <div className="text-right">
+                        <span className="font-extrabold text-forest font-sans">₹{pm.totalAmount.toLocaleString('en-IN')}</span>
+                        <span className="text-[11px] text-charcoal-muted ml-1.5 font-hindi">({pm.count} दान)</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-charcoal-muted font-hindi">कोई लेन-देन डेटा उपलब्ध नहीं।</p>
+              )}
+            </div>
+
+            {/* 2. 80G Tax Exemption Status */}
+            <div className="p-5 rounded-2xl bg-[#FAF9F6] border border-ivory-border space-y-3">
+              <div className="flex items-center space-x-2 text-xs font-bold text-charcoal font-hindi">
+                <ShieldCheck className="w-4 h-4 text-emerald-700" />
+                <span>80G कर छूट विश्लेषण (Section 80G)</span>
+              </div>
+
+              <div className="space-y-2.5 pt-1">
+                <div className="bg-white p-3 rounded-xl border border-ivory-border">
+                  <span className="text-[11px] text-charcoal-muted font-hindi block">कर छूट योग्य कुल राशि:</span>
+                  <div className="text-xl font-extrabold text-forest font-sans">
+                    ₹{(reports.tax80GEligible?.eligibleAmount || 0).toLocaleString('en-IN')}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-xs bg-white p-2.5 rounded-xl border border-ivory-border">
+                  <span className="text-charcoal-muted font-hindi">पैन (PAN) धारक दानदाता:</span>
+                  <span className="font-bold text-charcoal font-sans">{reports.tax80GEligible?.eligibleCount || 0} दान</span>
+                </div>
+
+                <p className="text-[11px] text-emerald-800 font-hindi bg-emerald-50/70 p-2.5 rounded-xl border border-emerald-200 leading-relaxed">
+                  {reports.tax80GEligible?.note || 'आयकर अधिनियम की धारा 80G के अंतर्गत 50% कर कटौती हेतु मान्य।'}
+                </p>
+              </div>
+            </div>
+
+            {/* 3. Monthly Trends */}
+            <div className="p-5 rounded-2xl bg-[#FAF9F6] border border-ivory-border space-y-3">
+              <div className="flex items-center space-x-2 text-xs font-bold text-charcoal font-hindi">
+                <PieChart className="w-4 h-4 text-forest" />
+                <span>मासिक संकलन रुझान (Monthly Timeline)</span>
+              </div>
+
+              {reports.byMonth && reports.byMonth.length > 0 ? (
+                <div className="space-y-2 pt-1 max-h-48 overflow-y-auto">
+                  {reports.byMonth.map((m: any, idx: number) => (
+                    <div key={idx} className="flex items-center justify-between text-xs bg-white p-2.5 rounded-xl border border-ivory-border">
+                      <span className="font-hindi text-charcoal font-medium">
+                        {new Date(m.year, m.month - 1).toLocaleDateString('hi-IN', { month: 'short', year: 'numeric' })}
+                      </span>
+                      <div className="text-right">
+                        <span className="font-extrabold text-forest font-sans">₹{m.totalAmount.toLocaleString('en-IN')}</span>
+                        <span className="text-[11px] text-charcoal-muted ml-1.5 font-hindi">({m.count})</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="bg-white p-4 rounded-xl border border-ivory-border text-center">
+                  <p className="text-xs text-charcoal-muted font-hindi">चालू वित्तीय वर्ष का मासिक डेटा संकलित हो रहा है।</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
     </main>
   );
 }
