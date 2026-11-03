@@ -46,8 +46,11 @@ export async function setupTestDb() {
   await seedDatabase();
 }
 
+import { drainMemoryQueue } from '../src/queues/pdfQueue';
+
 export async function teardownTestDb() {
   try {
+    drainMemoryQueue();
     if (mongoose.connection.readyState !== 0) {
       await mongoose.disconnect();
     }

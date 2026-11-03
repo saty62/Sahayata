@@ -63,12 +63,12 @@ export async function confirmDonationPaymentAtomic(
     };
   }
 
-  // 3. Concurrency Lock for duplicate payment callbacks on the SAME donation:
-  // Atomically transition from PENDING -> PROCESSING.
+  // 3. Concurrency Lock for payment confirmation / duplicate callbacks:
+  // Atomically transition from PENDING or FAILED -> PROCESSING.
   // If another concurrent request is already confirming this donation, acquired will be null!
   const acquired = await Donation.findOneAndUpdate(
-    { _id: donationId, paymentStatus: 'PENDING' },
-    { $set: { paymentStatus: 'PROCESSING' } },
+    { _id: donationId, paymentStatus: { $in: ['PENDING', 'FAILED'] } },
+    { $set: { paymentStatus: 'PROCESSING', failureReason: undefined } },
     { new: true }
   );
 

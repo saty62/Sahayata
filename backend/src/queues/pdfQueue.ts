@@ -19,6 +19,11 @@ let pdfBullQueue: Queue<PdfJobData> | null = null;
 const memoryQueue: PdfJobData[] = [];
 let isProcessingMemoryQueue = false;
 
+export function drainMemoryQueue(): void {
+  memoryQueue.length = 0;
+  isProcessingMemoryQueue = false;
+}
+
 async function processMemoryQueue() {
   if (isProcessingMemoryQueue || memoryQueue.length === 0) return;
   if (mongoose.connection.readyState !== 1) return; // Don't process if DB not connected
