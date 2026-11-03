@@ -119,7 +119,7 @@ Sahayata utilizes Groq Cloud API (`llama-3.3-70b-versatile` or `llama3-70b-8192`
 
 ### 2. Clone and Setup
 ```bash
-git clone <repository-url>
+git clone https://github.com/saty62/Sahayata.git
 cd sahayata
 
 # Install dependencies

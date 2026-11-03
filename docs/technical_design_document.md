@@ -4,7 +4,7 @@
 
 ---
 
-**GitHub Repository URL:** `https://github.com/placeholder-org/sahayata-platform` *(Clearly labelled placeholder until submission repo is designated)*  
+**GitHub Repository URL:** `https://github.com/saty62/Sahayata.git`  
 **Live Application URL:** `https://sahayata-welfare.vercel.app` *(Clearly labelled placeholder)*  
 **Document Version:** 1.0.0 (Production Release Candidate)  
 **Date:** November 2026  

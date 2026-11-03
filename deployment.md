@@ -121,7 +121,7 @@ Sahayata provides zero-friction local setup. If local MongoDB or Redis are not d
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/saty62/Sahayata.git
 cd sahayata
 
 # Install dependencies in both packages
