@@ -29,8 +29,14 @@ async function startDatabase() {
     logger.warn(`Could not connect to external MongoDB: ${err.message}`);
     logger.info('Starting local in-memory MongoDB Replica Set (supporting full transactions)...');
 
+    const os = await import('os');
+    const path = await import('path');
+    const fallbackDbPath = path.join(tempDir, `mongo-server-${Date.now()}`);
+    fs.mkdirSync(fallbackDbPath, { recursive: true });
+
     mongoReplSet = await MongoMemoryReplSet.create({
       replSet: { count: 1, storageEngine: 'wiredTiger' },
+      instanceOpts: [{ dbPath: fallbackDbPath }],
     });
     const uri = mongoReplSet.getUri();
     await mongoose.connect(uri);

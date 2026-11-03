@@ -71,6 +71,8 @@ export const api = {
   deleteScheme: (id: string) => fetchJson(`/schemes/${id}`, { method: 'DELETE' }),
   generateSchemeSummary: (id: string, noticeText?: string) =>
     fetchJson(`/schemes/${id}/generate-summary`, { method: 'POST', body: JSON.stringify({ noticeText }) }),
+  generateAiSummary: (id: string, noticeText?: string) =>
+    fetchJson(`/schemes/${id}/generate-summary`, { method: 'POST', body: JSON.stringify({ noticeText }) }),
   approveSchemeSummary: (id: string, payload: any) =>
     fetchJson(`/schemes/${id}/approve`, { method: 'POST', body: JSON.stringify(payload) }),
   publishScheme: (id: string, published: boolean) =>

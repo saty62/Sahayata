@@ -1,7 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { Campaign } from '@/types';
-import { Heart, Target, TrendingUp, Users } from 'lucide-react';
+import { Heart, TrendingUp, ShieldCheck, ArrowRight } from 'lucide-react';
 
 interface CampaignCardProps {
   campaign: Campaign;
@@ -13,26 +13,32 @@ export default function CampaignCard({ campaign }: CampaignCardProps) {
     : 0;
 
   return (
-    <div className="bg-white rounded-2xl border border-[#E8E5DD] shadow-soft-sm hover:shadow-soft-md transition-all flex flex-col justify-between overflow-hidden group">
+    <article className="bg-white rounded-3xl border border-ivory-border shadow-soft-sm hover:shadow-soft-md transition-all flex flex-col justify-between overflow-hidden group card-hover">
       <div className="p-6 space-y-4">
         {/* Category & Status */}
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-forest/10 text-forest border border-forest/20">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-bold px-3 py-1 rounded-full bg-forest/10 text-forest border border-forest/20 font-hindi">
             {campaign.category}
           </span>
-          {campaign.isFeatured && (
-            <span className="text-xs font-semibold text-accent-dark bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
-              विशेष अभियान (Featured)
+          <div className="flex items-center space-x-1.5">
+            <span className="text-[10px] font-bold text-forest bg-sage/60 px-2 py-0.5 rounded border border-sage-dark/40 flex items-center font-hindi">
+              <ShieldCheck className="w-3 h-3 mr-1 text-forest" />
+              80G मान्य
             </span>
-          )}
+            {campaign.isFeatured && (
+              <span className="text-[10px] font-bold text-amber-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-300 font-hindi">
+                विशेष
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Title */}
         <div>
-          <h3 className="font-hindi text-lg font-bold text-charcoal group-hover:text-forest transition-colors leading-snug">
+          <h3 className="font-hindi text-lg sm:text-xl font-bold text-charcoal group-hover:text-forest transition-colors leading-snug">
             {campaign.nameHindi}
           </h3>
-          <p className="text-xs text-charcoal-muted mt-1 line-clamp-1">
+          <p className="text-xs text-charcoal-muted mt-0.5 line-clamp-1 font-medium">
             {campaign.name}
           </p>
         </div>
@@ -43,24 +49,31 @@ export default function CampaignCard({ campaign }: CampaignCardProps) {
         </p>
 
         {/* Progress Bar & Amounts */}
-        <div className="space-y-2 pt-2">
-          <div className="w-full bg-[#FAF9F6] h-3 rounded-full overflow-hidden border border-[#E8E5DD]">
+        <div className="space-y-2.5 pt-2">
+          <div
+            className="w-full bg-[#FAF9F6] h-3 rounded-full overflow-hidden border border-ivory-border"
+            role="progressbar"
+            aria-valuenow={percent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={`${campaign.nameHindi} प्रगति ${percent}%`}
+          >
             <div
-              className="bg-forest h-full rounded-full transition-all duration-500 ease-out"
+              className="bg-gradient-to-r from-forest to-forest-light h-full rounded-full transition-all duration-500 ease-out"
               style={{ width: `${percent}%` }}
             />
           </div>
 
-          <div className="flex items-center justify-between text-xs">
+          <div className="flex items-center justify-between text-xs font-hindi">
             <div>
-              <span className="text-charcoal-muted">एकत्रित (Collected): </span>
-              <span className="font-bold text-forest text-sm">
+              <span className="text-charcoal-muted">एकत्रित राशि: </span>
+              <span className="font-extrabold text-forest text-sm font-sans">
                 ₹{campaign.collectedAmount.toLocaleString('en-IN')}
               </span>
             </div>
             <div className="text-right">
-              <span className="text-charcoal-muted">लक्ष्य (Goal): </span>
-              <span className="font-semibold text-charcoal">
+              <span className="text-charcoal-muted">लक्ष्य: </span>
+              <span className="font-bold text-charcoal font-sans">
                 ₹{campaign.targetAmount.toLocaleString('en-IN')}
               </span>
             </div>
@@ -69,20 +82,20 @@ export default function CampaignCard({ campaign }: CampaignCardProps) {
       </div>
 
       {/* Action Footer */}
-      <div className="px-6 py-4 bg-[#FAF9F6] border-t border-[#E8E5DD] flex items-center justify-between">
-        <span className="text-xs font-semibold text-charcoal-muted flex items-center">
+      <div className="px-6 py-4 bg-[#FAF9F6] border-t border-ivory-border flex items-center justify-between">
+        <span className="text-xs font-bold text-charcoal-muted flex items-center font-hindi">
           <TrendingUp className="w-4 h-4 mr-1 text-forest" />
           <span>{percent}% पूर्ण</span>
         </span>
 
         <Link
           href={`/donate?campaignId=${campaign._id}`}
-          className="inline-flex items-center px-4 py-2 rounded-lg bg-forest text-white text-xs font-semibold hover:bg-forest-hover transition-colors shadow-soft-sm"
+          className="inline-flex items-center px-4 py-2 rounded-xl bg-forest text-white text-xs font-hindi font-bold hover:bg-forest-hover transition-colors shadow-soft-sm touch-target"
         >
           <Heart className="w-3.5 h-3.5 mr-1.5 text-accent fill-current" />
           <span>सहयोग करें (Donate)</span>
         </Link>
       </div>
-    </div>
+    </article>
   );
 }

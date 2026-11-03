@@ -18,6 +18,7 @@ import {
   Check,
   Save,
   RotateCcw,
+  X
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Scheme } from '@/types';
@@ -102,98 +103,77 @@ export default function SchemeCmsPage() {
     setSuccessMsg('');
   };
 
-  // AI Summary Generator
+  // AI Summary Generation
   const handleGenerateAiSummary = async () => {
     if (!formNoticeText.trim()) {
-      setError('कृपया सारांश बनाने के लिए सरकारी अधिसूचना का आधिकारिक पाठ (Official Notice Text) दर्ज करें।');
+      setError('कृपया पहले आधिकारिक अधिसूचना / परिपत्र की विषय-वस्तु (Notice Text) दर्ज करें।');
       return;
     }
 
-    if (!editingScheme && !isCreatingNew) return;
+    if (!editingScheme && isCreatingNew) {
+      setError('कृपया पहले योजना की मूल जानकारी सहेजें (Save), उसके पश्चात AI सारांश बनाएं।');
+      return;
+    }
 
     setIsAiLoading(true);
     setError('');
     setSuccessMsg('');
 
     try {
-      let targetId = editingScheme?._id;
-
-      // If creating new, save basic draft first to obtain ID
-      if (isCreatingNew) {
-        const createRes = await api.createScheme({
-          schemeId: formSchemeId,
-          titleHindi: formTitleHindi || 'नई योजना ड्राफ्ट',
-          titleEnglish: formTitleEnglish || 'New Scheme Draft',
-          category: formCategory,
-          districts: formDistricts.split(',').map((d) => d.trim()),
-          officialSourceUrl: formOfficialUrl,
-          officialNoticeText: formNoticeText,
-        });
-
-        if (!createRes.success) {
-          throw new Error(createRes.message || 'ड्राफ्ट सहेजने में त्रुटि');
-        }
-
-        targetId = createRes.data.scheme._id;
-        setEditingScheme(createRes.data.scheme);
-        setIsCreatingNew(false);
-      }
-
-      const res = await api.generateSchemeSummary(targetId!, formNoticeText);
-
+      const res = await api.generateAiSummary(editingScheme!._id, formNoticeText);
       if (res.success && res.data?.aiSummaryDraft) {
         const draft = res.data.aiSummaryDraft;
         setFormBenefits(draft.benefits?.join('\n') || formBenefits);
         setFormDocuments(draft.requiredDocuments?.join('\n') || formDocuments);
         setFormSteps(draft.applicationSteps?.join('\n') || formSteps);
-        setEditingScheme(res.data.scheme);
-        setSuccessMsg('Groq AI द्वारा संरचित हिंदी सारांश सफलतापूर्वक तैयार किया गया (Status: DRAFT)। समीक्षा करें और स्वीकृति दें।');
+        setSuccessMsg('Groq AI द्वारा आधिकारिक परिपत्र से संरचित सारांश तैयार कर लिया गया है। कृपया समीक्षा करें।');
+        loadSchemes();
       } else {
         setError(res.message || 'AI सारांश निर्माण विफल रहा।');
       }
     } catch (err: any) {
-      setError(err.message || 'AI सारांश निर्माण में त्रुटि हुई।');
+      setError(err.message || 'Groq AI सेवा से संपर्क में त्रुटि।');
     } finally {
       setIsAiLoading(false);
-      loadSchemes();
     }
   };
 
-  // Save / Update Scheme
+  // Save or Update Scheme
   const handleSaveScheme = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSuccessMsg('');
 
-    const payload = {
-      schemeId: formSchemeId.trim().toUpperCase(),
-      titleHindi: formTitleHindi.trim(),
-      titleEnglish: formTitleEnglish.trim(),
-      category: formCategory,
-      districts: formDistricts.split(',').map((d) => d.trim()),
-      officialSourceUrl: formOfficialUrl.trim(),
-      officialNoticeText: formNoticeText,
-      benefits: formBenefits.split('\n').filter((b) => b.trim().length > 0),
-      documents: formDocuments.split('\n').filter((d) => d.trim().length > 0),
-      applicationSteps: formSteps.split('\n').filter((s) => s.trim().length > 0),
-    };
-
     try {
+      const payload: any = {
+        schemeId: formSchemeId.trim().toUpperCase(),
+        titleHindi: formTitleHindi.trim(),
+        titleEnglish: formTitleEnglish.trim(),
+        category: formCategory,
+        districts: formDistricts.split(',').map((d) => d.trim()),
+        officialSourceUrl: formOfficialUrl.trim(),
+        officialNoticeText: formNoticeText.trim(),
+        benefits: formBenefits.split('\n').map((b) => b.trim()).filter(Boolean),
+        documents: formDocuments.split('\n').map((d) => d.trim()).filter(Boolean),
+        applicationSteps: formSteps.split('\n').map((s) => s.trim()).filter(Boolean),
+      };
+
       if (isCreatingNew) {
         const res = await api.createScheme(payload);
         if (res.success) {
-          setSuccessMsg('योजना सफलतापूर्वक ड्राफ्ट के रूप में सहेजी गई।');
+          setSuccessMsg('नई योजना सफलतापूर्वक सहेजी गई!');
           setIsCreatingNew(false);
           setEditingScheme(res.data.scheme);
+          loadSchemes();
         }
       } else if (editingScheme) {
         const res = await api.updateScheme(editingScheme._id, payload);
         if (res.success) {
-          setSuccessMsg('योजना विवरण सफलतापूर्वक अपडेट किया गया।');
+          setSuccessMsg('योजना विवरण सफलतापूर्वक अद्यतन किया गया!');
           setEditingScheme(res.data.scheme);
+          loadSchemes();
         }
       }
-      loadSchemes();
     } catch (err: any) {
       setError(err.message || 'सहेजने में त्रुटि हुई।');
     }
@@ -254,21 +234,22 @@ export default function SchemeCmsPage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+    <main id="main-content" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8 pb-24">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[#E8E5DD]">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-ivory-border">
         <div className="flex items-center space-x-3">
           <Link
             href="/admin"
-            className="p-2 rounded-xl bg-white border border-[#E8E5DD] text-charcoal hover:bg-sage/40 transition-colors"
+            className="p-2.5 rounded-2xl bg-white border border-ivory-border text-charcoal hover:bg-sage/40 transition-colors touch-target"
+            aria-label="एडमिन डैशबोर्ड पर वापस जाएं"
           >
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div>
-            <h1 className="font-hindi text-2xl sm:text-3xl font-extrabold text-charcoal">
+            <h1 className="heading-hindi text-2xl sm:text-3xl font-extrabold text-charcoal">
               सरकारी योजना सीएमएस (Scheme Management)
             </h1>
-            <p className="text-xs text-charcoal-muted">
+            <p className="text-xs text-charcoal-muted font-hindi mt-0.5">
               आधिकारिक अधिसूचना जोड़ें, Groq AI द्वारा सरल हिंदी सारांश बनाएं, समीक्षा करें और प्रकाशित करें।
             </p>
           </div>
@@ -276,7 +257,7 @@ export default function SchemeCmsPage() {
 
         <button
           onClick={openCreateModal}
-          className="inline-flex items-center px-4 py-2.5 rounded-xl bg-forest text-white text-xs font-hindi font-bold hover:bg-forest-hover shadow-soft-sm"
+          className="inline-flex items-center px-5 py-3 rounded-2xl bg-forest text-white text-xs font-hindi font-bold hover:bg-forest-hover shadow-soft-sm touch-target"
         >
           <Plus className="w-4 h-4 mr-1.5" />
           <span>नई योजना जोड़ें (Add Scheme)</span>
@@ -284,56 +265,59 @@ export default function SchemeCmsPage() {
       </div>
 
       {error && (
-        <div className="p-4 rounded-2xl bg-red-50 text-red-700 text-xs font-hindi border border-red-200 flex items-center">
+        <div className="p-4 rounded-2xl bg-red-50 text-red-800 text-xs font-hindi border border-red-200 flex items-center" role="alert">
           <AlertCircle className="w-4 h-4 mr-2 shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
       {successMsg && (
-        <div className="p-4 rounded-2xl bg-emerald-50 text-emerald-800 text-xs font-hindi border border-emerald-200 flex items-center">
-          <CheckCircle className="w-4 h-4 mr-2 shrink-0" />
+        <div className="p-4 rounded-2xl bg-emerald-50 text-emerald-900 text-xs font-hindi border border-emerald-200 flex items-center" role="status">
+          <CheckCircle className="w-4 h-4 mr-2 shrink-0 text-emerald-700" />
           <span>{successMsg}</span>
         </div>
       )}
 
       {/* Schemes Table */}
-      <div className="bg-white rounded-3xl border border-[#E8E5DD] shadow-soft-sm overflow-hidden">
-        <div className="overflow-x-auto">
+      <section className="bg-white rounded-3xl border border-ivory-border shadow-soft-sm overflow-hidden" aria-labelledby="schemes-table-heading">
+        <h2 id="schemes-table-heading" className="sr-only">योजनाओं की सूची</h2>
+        
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-[#FAF9F6] text-charcoal font-semibold border-b border-[#E8E5DD]">
+            <thead className="bg-[#FAF9F6] text-charcoal font-bold border-b border-ivory-border font-hindi">
               <tr>
-                <th className="py-3 px-4">कोड (ID)</th>
-                <th className="py-3 px-4">योजना नाम (Hindi & English)</th>
-                <th className="py-3 px-4">श्रेणी (Category)</th>
-                <th className="py-3 px-4">AI ड्राफ्ट स्थिति (AI Summary)</th>
-                <th className="py-3 px-4">प्रकाशन स्थिति (Status)</th>
-                <th className="py-3 px-4 text-right">कार्रवाई (Actions)</th>
+                <th scope="col" className="py-3.5 px-4">कोड (ID)</th>
+                <th scope="col" className="py-3.5 px-4">योजना नाम (Hindi & English)</th>
+                <th scope="col" className="py-3.5 px-4">श्रेणी (Category)</th>
+                <th scope="col" className="py-3.5 px-4">AI ड्राफ्ट स्थिति (AI Summary)</th>
+                <th scope="col" className="py-3.5 px-4">प्रकाशन स्थिति (Status)</th>
+                <th scope="col" className="py-3.5 px-4 text-right">कार्रवाई (Actions)</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#E8E5DD]">
+            <tbody className="divide-y divide-ivory-border">
               {schemes.map((scheme) => (
                 <tr key={scheme._id} className="hover:bg-[#FAF9F6]/80 transition-colors">
-                  <td className="py-3.5 px-4 font-mono font-bold text-forest">
+                  <td className="py-4 px-4 font-mono font-bold text-forest">
                     {scheme.schemeId}
                   </td>
-                  <td className="py-3.5 px-4 max-w-sm">
+                  <td className="py-4 px-4 max-w-sm">
                     <div className="font-hindi font-bold text-charcoal">{scheme.titleHindi}</div>
-                    <div className="text-[11px] text-charcoal-muted">{scheme.titleEnglish}</div>
+                    <div className="text-[11px] text-charcoal-muted font-medium">{scheme.titleEnglish}</div>
                   </td>
-                  <td className="py-3.5 px-4">
-                    <span className="px-2 py-0.5 rounded-full bg-forest/10 text-forest text-[11px] font-semibold">
+                  <td className="py-4 px-4">
+                    <span className="px-2.5 py-1 rounded-full bg-forest/10 text-forest text-[11px] font-bold font-hindi">
                       {scheme.category}
                     </span>
                   </td>
-                  <td className="py-3.5 px-4">
+                  <td className="py-4 px-4">
                     <span
-                      className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                      className={`px-3 py-1 rounded-full text-[11px] font-bold font-hindi ${
                         scheme.summaryStatus === 'APPROVED'
-                          ? 'bg-emerald-50 text-emerald-800'
+                          ? 'bg-emerald-50 text-emerald-900 border border-emerald-300'
                           : scheme.summaryStatus === 'DRAFT'
-                          ? 'bg-amber-50 text-amber-800'
-                          : 'bg-stone-100 text-stone-600'
+                          ? 'bg-amber-50 text-amber-950 border border-amber-300'
+                          : 'bg-stone-100 text-stone-700'
                       }`}
                     >
                       {scheme.summaryStatus === 'APPROVED'
@@ -343,38 +327,41 @@ export default function SchemeCmsPage() {
                         : 'कोई ड्राफ्ट नहीं'}
                     </span>
                   </td>
-                  <td className="py-3.5 px-4">
+                  <td className="py-4 px-4">
                     <button
                       onClick={() => handlePublishToggle(scheme, !scheme.published)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${
+                      className={`px-3 py-1.5 rounded-xl text-[11px] font-bold font-hindi transition-colors touch-target ${
                         scheme.published
-                          ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
-                          : 'bg-stone-200 text-stone-700 hover:bg-stone-300'
+                          ? 'bg-emerald-100 text-emerald-900 hover:bg-emerald-200 border border-emerald-300'
+                          : 'bg-stone-200 text-stone-800 hover:bg-stone-300'
                       }`}
                     >
                       {scheme.published ? '✓ प्रकाशित (Live)' : 'अप्रदर्शित (Hidden)'}
                     </button>
                   </td>
-                  <td className="py-3.5 px-4 text-right space-x-2">
+                  <td className="py-4 px-4 text-right space-x-1.5">
                     <button
                       onClick={() => openEditModal(scheme)}
-                      className="p-1.5 text-forest hover:bg-sage/40 rounded-lg transition-colors"
+                      className="p-2 text-forest hover:bg-sage/40 rounded-xl transition-colors touch-target"
                       title="संपादित करें / AI सारांश बनाएं"
+                      aria-label={`${scheme.titleHindi} संपादित करें`}
                     >
                       <Edit className="w-4 h-4 inline" />
                     </button>
                     <Link
                       href={`/schemes/${scheme._id}`}
                       target="_blank"
-                      className="p-1.5 text-charcoal hover:bg-sage/40 rounded-lg transition-colors inline-block"
+                      className="p-2 text-charcoal hover:bg-sage/40 rounded-xl transition-colors inline-block touch-target"
                       title="पूर्वावलोकन देखें"
+                      aria-label={`${scheme.titleHindi} पूर्वावलोकन`}
                     >
                       <Eye className="w-4 h-4 inline" />
                     </Link>
                     <button
                       onClick={() => handleDeleteScheme(scheme._id)}
-                      className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      className="p-2 text-red-600 hover:bg-red-50 rounded-xl transition-colors touch-target"
                       title="हटाएं"
+                      aria-label={`${scheme.titleHindi} हटाएं`}
                     >
                       <Trash2 className="w-4 h-4 inline" />
                     </button>
@@ -384,19 +371,83 @@ export default function SchemeCmsPage() {
             </tbody>
           </table>
         </div>
-      </div>
+
+        {/* Mobile Schemes Cards */}
+        <div className="md:hidden divide-y divide-ivory-border">
+          {schemes.map((scheme) => (
+            <div key={scheme._id} className="p-4 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <span className="font-mono text-xs font-bold text-forest bg-sage/60 px-2 py-0.5 rounded">
+                    {scheme.schemeId}
+                  </span>
+                  <h3 className="font-hindi font-bold text-sm text-charcoal mt-1">{scheme.titleHindi}</h3>
+                  <p className="text-[11px] text-charcoal-muted">{scheme.titleEnglish}</p>
+                </div>
+                <span className="text-[11px] font-bold text-forest bg-forest/10 px-2.5 py-0.5 rounded-full">
+                  {scheme.category}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between text-xs pt-1">
+                <span className="text-xs font-hindi text-charcoal-muted">
+                  {scheme.summaryStatus === 'APPROVED' ? '✓ सारांश स्वीकृत' : 'ड्राफ्ट'}
+                </span>
+                <button
+                  onClick={() => handlePublishToggle(scheme, !scheme.published)}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold font-hindi ${
+                    scheme.published ? 'bg-emerald-100 text-emerald-900' : 'bg-stone-200 text-stone-800'
+                  }`}
+                >
+                  {scheme.published ? 'प्रकाशित' : 'अप्रदर्शित'}
+                </button>
+              </div>
+
+              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-ivory-border">
+                <button
+                  onClick={() => openEditModal(scheme)}
+                  className="px-3 py-1.5 rounded-lg bg-sage/60 text-forest text-xs font-bold font-hindi flex items-center space-x-1"
+                >
+                  <Edit className="w-3.5 h-3.5" />
+                  <span>संपादित</span>
+                </button>
+                <Link
+                  href={`/schemes/${scheme._id}`}
+                  target="_blank"
+                  className="px-3 py-1.5 rounded-lg border border-ivory-border text-charcoal text-xs font-bold font-hindi flex items-center space-x-1"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>देखें</span>
+                </Link>
+                <button
+                  onClick={() => handleDeleteScheme(scheme._id)}
+                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                  aria-label="हटाएं"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
 
       {/* CMS EDITOR MODAL */}
       {(editingScheme || isCreatingNew) && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-charcoal/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6 sm:p-10 shadow-soft-lg border border-[#E8E5DD] space-y-6">
-            <div className="flex items-center justify-between pb-4 border-b border-[#E8E5DD]">
+        <div
+          className="fixed inset-0 z-50 overflow-y-auto bg-charcoal/60 backdrop-blur-sm flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="editor-modal-title"
+        >
+          <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6 sm:p-10 shadow-soft-lg border border-ivory-border space-y-6">
+            <div className="flex items-center justify-between pb-4 border-b border-ivory-border">
               <div>
-                <h3 className="font-hindi text-2xl font-bold text-charcoal">
-                  {isCreatingNew ? 'नई सरकारी योजना जोड़ें' : `योजना संपादन: ${editingScheme?.schemeId}`}
-                </h3>
-                <p className="text-xs text-charcoal-muted">
-                  आधिकारिक अधिसूचना दर्ज करें और AI सारांश तैयार करें।
+                <h2 id="editor-modal-title" className="font-hindi text-2xl font-bold text-charcoal">
+                  {isCreatingNew ? 'नई कल्याण योजना जोड़ें' : `संपादित करें: ${editingScheme?.titleHindi}`}
+                </h2>
+                <p className="text-xs text-charcoal-muted font-hindi mt-0.5">
+                  आधिकारिक अधिसूचना दर्ज कर Groq AI द्वारा सरल हिंदी सारांश उत्पन्न करें
                 </p>
               </div>
               <button
@@ -404,9 +455,10 @@ export default function SchemeCmsPage() {
                   setEditingScheme(null);
                   setIsCreatingNew(false);
                 }}
-                className="text-charcoal-muted hover:text-charcoal"
+                className="text-charcoal-muted hover:text-charcoal p-2 rounded-full hover:bg-sage/40 transition-colors touch-target"
+                aria-label="संपादक बंद करें"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -414,27 +466,29 @@ export default function SchemeCmsPage() {
               {/* Basic Fields Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-charcoal font-hindi mb-1">
+                  <label htmlFor="form-scheme-id" className="block text-xs font-bold text-charcoal font-hindi mb-1">
                     योजना कोड (Scheme ID) *
                   </label>
                   <input
+                    id="form-scheme-id"
                     type="text"
                     required
                     value={formSchemeId}
                     onChange={(e) => setFormSchemeId(e.target.value)}
                     placeholder="उदा. SCH-014"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#E8E5DD] text-xs font-mono font-bold bg-[#FAF9F6]"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-ivory-border text-xs font-mono font-bold bg-[#FAF9F6] touch-target"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-charcoal font-hindi mb-1">
+                  <label htmlFor="form-category" className="block text-xs font-bold text-charcoal font-hindi mb-1">
                     श्रेणी (Category) *
                   </label>
                   <select
+                    id="form-category"
                     value={formCategory}
                     onChange={(e) => setFormCategory(e.target.value as any)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-[#E8E5DD] text-xs font-hindi bg-[#FAF9F6]"
+                    className="w-full px-3 py-2.5 rounded-xl border border-ivory-border text-xs font-hindi bg-[#FAF9F6] touch-target"
                   >
                     <option value="पेंशन">पेंशन (Pension)</option>
                     <option value="स्वास्थ्य">स्वास्थ्य (Health)</option>
@@ -445,15 +499,16 @@ export default function SchemeCmsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-charcoal font-hindi mb-1">
+                  <label htmlFor="form-districts" className="block text-xs font-bold text-charcoal font-hindi mb-1">
                     लागू जिले (Districts)
                   </label>
                   <input
+                    id="form-districts"
                     type="text"
                     value={formDistricts}
                     onChange={(e) => setFormDistricts(e.target.value)}
                     placeholder="ALL या Bhopal, Sehore"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#E8E5DD] text-xs font-hindi bg-[#FAF9F6]"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-ivory-border text-xs font-hindi bg-[#FAF9F6] touch-target"
                   />
                 </div>
               </div>
@@ -461,155 +516,177 @@ export default function SchemeCmsPage() {
               {/* Titles */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-charcoal font-hindi mb-1">
+                  <label htmlFor="form-title-hindi" className="block text-xs font-bold text-charcoal font-hindi mb-1">
                     योजना का हिंदी नाम *
                   </label>
                   <input
+                    id="form-title-hindi"
                     type="text"
                     required
                     value={formTitleHindi}
                     onChange={(e) => setFormTitleHindi(e.target.value)}
                     placeholder="उदा. राज्य विधवा पेंशन योजना"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#E8E5DD] text-sm font-hindi bg-[#FAF9F6]"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-ivory-border text-sm font-hindi bg-[#FAF9F6] touch-target"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-charcoal font-hindi mb-1">
+                  <label htmlFor="form-title-english" className="block text-xs font-bold text-charcoal font-hindi mb-1">
                     English Title *
                   </label>
                   <input
+                    id="form-title-english"
                     type="text"
                     required
                     value={formTitleEnglish}
                     onChange={(e) => setFormTitleEnglish(e.target.value)}
                     placeholder="State Widow Pension Scheme"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#E8E5DD] text-sm bg-[#FAF9F6]"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-ivory-border text-sm bg-[#FAF9F6] touch-target"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-charcoal font-hindi mb-1">
+                <label htmlFor="form-url" className="block text-xs font-bold text-charcoal font-hindi mb-1">
                   आधिकारिक स्रोत लिंक (Official URL) *
                 </label>
                 <input
+                  id="form-url"
                   type="url"
                   required
                   value={formOfficialUrl}
                   onChange={(e) => setFormOfficialUrl(e.target.value)}
-                  placeholder="https://socialsecurity.mp.gov.in"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#E8E5DD] text-xs bg-[#FAF9F6]"
+                  placeholder="https://mp.gov.in/schemes/..."
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-ivory-border text-xs font-mono bg-[#FAF9F6] touch-target"
                 />
               </div>
 
-              {/* Official Notice Text & Groq AI Generator */}
-              <div className="bg-sage/20 p-5 rounded-2xl border border-sage-dark/30 space-y-3">
+              {/* Official Notice Text & AI Trigger Section */}
+              <div className="space-y-2 bg-[#FAF9F6] p-5 rounded-2xl border border-ivory-border">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <label className="block text-xs font-bold text-forest font-hindi">
-                    आधिकारिक सरकारी अधिसूचना पाठ (Official Notice Text)
+                  <label htmlFor="form-notice" className="block text-xs font-bold text-forest font-hindi">
+                    आधिकारिक परिपत्र / अधिसूचना की मूल विषय-वस्तु (Official Notice Text):
                   </label>
-
-                  <button
-                    type="button"
-                    disabled={isAiLoading || !formNoticeText.trim()}
-                    onClick={handleGenerateAiSummary}
-                    className="inline-flex items-center px-4 py-2 rounded-xl bg-forest text-white text-xs font-hindi font-bold hover:bg-forest-hover disabled:opacity-50 shadow-soft-sm self-start sm:self-auto"
-                  >
-                    <Sparkles className="w-4 h-4 mr-1.5 text-accent fill-current" />
-                    <span>{isAiLoading ? 'Groq AI विश्लेषण कर रहा है...' : 'Groq AI से सरल हिंदी सारांश बनाएं'}</span>
-                  </button>
+                  {editingScheme && (
+                    <button
+                      type="button"
+                      disabled={isAiLoading || !formNoticeText.trim()}
+                      onClick={handleGenerateAiSummary}
+                      className="inline-flex items-center px-4 py-2 rounded-xl bg-forest text-white text-xs font-hindi font-bold hover:bg-forest-hover transition-colors shadow-soft-sm disabled:opacity-50 touch-target"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 mr-1.5 text-accent fill-current" />
+                      <span>{isAiLoading ? 'Groq AI विश्लेषण कर रहा है...' : 'Groq AI द्वारा सरल हिंदी सारांश बनाएं'}</span>
+                    </button>
+                  )}
                 </div>
 
                 <textarea
+                  id="form-notice"
                   rows={4}
                   value={formNoticeText}
                   onChange={(e) => setFormNoticeText(e.target.value)}
-                  placeholder="सरकारी राजपत्र या शासनादेश का संपूर्ण विवरण यहाँ पेस्ट करें..."
-                  className="w-full p-3 rounded-xl border border-[#E8E5DD] bg-white text-xs font-hindi leading-relaxed"
+                  placeholder="मध्य प्रदेश शासन द्वारा जारी आदेश अथवा अधिसूचना का मूल पाठ यहाँ पेस्ट करें..."
+                  className="w-full p-3.5 rounded-xl border border-ivory-border bg-white text-xs font-hindi leading-relaxed focus:ring-2 focus:ring-forest"
                 />
               </div>
 
-              {/* Generated Content Review & Edit */}
+              {/* Benefits, Documents, Steps Textareas */}
               <div className="space-y-4">
-                <h4 className="font-hindi text-sm font-bold text-charcoal">
-                  योजना विवरण व लाभ (प्रत्येक बिंदु नई पंक्ति में दर्ज करें)
-                </h4>
-
                 <div>
-                  <label className="block text-xs font-semibold text-charcoal font-hindi mb-1">
-                    लाभ (Benefits):
+                  <label htmlFor="form-benefits" className="block text-xs font-bold text-charcoal font-hindi mb-1">
+                    आर्थिक व अन्य लाभ (Benefits - प्रति पंक्ति एक लाभ):
                   </label>
                   <textarea
+                    id="form-benefits"
                     rows={3}
                     value={formBenefits}
                     onChange={(e) => setFormBenefits(e.target.value)}
-                    placeholder="₹600 प्रतिमाह सीधे बैंक खाते में..."
-                    className="w-full p-3 rounded-xl border border-[#E8E5DD] text-xs font-hindi bg-[#FAF9F6]"
+                    placeholder="₹600 प्रतिमाह आर्थिक सहायता..."
+                    className="w-full p-3 rounded-xl border border-ivory-border bg-[#FAF9F6] text-xs font-hindi"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-charcoal font-hindi mb-1">
-                    आवश्यक दस्तावेज़ (Required Documents):
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={formDocuments}
-                    onChange={(e) => setFormDocuments(e.target.value)}
-                    placeholder="पति का मृत्यु प्रमाण पत्र&#10;बीपीएल राशन कार्ड..."
-                    className="w-full p-3 rounded-xl border border-[#E8E5DD] text-xs font-hindi bg-[#FAF9F6]"
-                  />
-                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="form-docs" className="block text-xs font-bold text-charcoal font-hindi mb-1">
+                      आवश्यक दस्तावेज़ (Documents - प्रति पंक्ति एक):
+                    </label>
+                    <textarea
+                      id="form-docs"
+                      rows={3}
+                      value={formDocuments}
+                      onChange={(e) => setFormDocuments(e.target.value)}
+                      placeholder="आधार कार्ड&#10;समग्र आईडी&#10;बीपीएल राशन कार्ड..."
+                      className="w-full p-3 rounded-xl border border-ivory-border bg-[#FAF9F6] text-xs font-hindi"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-charcoal font-hindi mb-1">
-                    आवेदन चरण (Application Steps):
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={formSteps}
-                    onChange={(e) => setFormSteps(e.target.value)}
-                    placeholder="लोक सेवा केंद्र पर जाएं...&#10;प्रपत्र भरें..."
-                    className="w-full p-3 rounded-xl border border-[#E8E5DD] text-xs font-hindi bg-[#FAF9F6]"
-                  />
+                  <div>
+                    <label htmlFor="form-steps" className="block text-xs font-bold text-charcoal font-hindi mb-1">
+                      आवेदन चरण (Application Steps - प्रति पंक्ति एक):
+                    </label>
+                    <textarea
+                      id="form-steps"
+                      rows={3}
+                      value={formSteps}
+                      onChange={(e) => setFormSteps(e.target.value)}
+                      placeholder="ग्राम पंचायत या लोक सेवा केंद्र जाएं&#10;आवेदन पत्र भरें..."
+                      className="w-full p-3 rounded-xl border border-ivory-border bg-[#FAF9F6] text-xs font-hindi"
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Bottom Buttons: Save, Approve, Reject */}
-              <div className="pt-4 border-t border-[#E8E5DD] flex flex-wrap items-center justify-between gap-3">
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-forest text-white font-hindi font-bold text-xs hover:bg-forest-hover shadow-soft-sm flex items-center"
-                >
-                  <Save className="w-4 h-4 mr-1.5" />
-                  <span>ड्राफ्ट सहेजें (Save Changes)</span>
-                </button>
-
-                {editingScheme && (
-                  <div className="flex items-center space-x-2">
+              {/* Approval Buttons */}
+              {editingScheme && editingScheme.summaryStatus === 'DRAFT' && (
+                <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="text-xs text-amber-950 font-hindi">
+                    <strong>AI सारांश समीक्षाधीन है:</strong> कृपया विवरण जांचें और स्वीकृत अथवा अस्वीकृत करें।
+                  </div>
+                  <div className="flex space-x-2">
                     <button
                       type="button"
                       onClick={() => handleApproveSummary(true)}
-                      className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-hindi font-bold text-xs hover:bg-emerald-700 flex items-center"
+                      className="px-4 py-2 rounded-xl bg-emerald-700 text-white text-xs font-hindi font-bold hover:bg-emerald-800 touch-target"
                     >
-                      <Check className="w-4 h-4 mr-1" />
-                      <span>सारांश स्वीकृत करें (Approve)</span>
+                      ✓ स्वीकृत करें (Approve)
                     </button>
                     <button
                       type="button"
                       onClick={() => handleApproveSummary(false)}
-                      className="px-4 py-2 rounded-xl border border-red-300 text-red-700 font-hindi font-semibold text-xs hover:bg-red-50"
+                      className="px-4 py-2 rounded-xl border border-red-300 text-red-700 bg-white text-xs font-hindi font-bold hover:bg-red-50 touch-target"
                     >
-                      अस्वीकृत करें (Reject)
+                      ✕ अस्वीकृत करें
                     </button>
                   </div>
-                )}
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="pt-4 border-t border-ivory-border flex flex-wrap items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingScheme(null);
+                    setIsCreatingNew(false);
+                  }}
+                  className="px-5 py-2.5 rounded-xl border border-ivory-border text-xs font-hindi text-charcoal hover:bg-sage/40 touch-target"
+                >
+                  रद्द करें (Cancel)
+                </button>
+
+                <button
+                  type="submit"
+                  className="px-8 py-3 rounded-xl bg-forest text-white text-xs font-hindi font-bold hover:bg-forest-hover shadow-soft-sm flex items-center touch-target"
+                >
+                  <Save className="w-4 h-4 mr-1.5" />
+                  <span>सहेजें (Save Scheme)</span>
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
-    </div>
+    </main>
   );
 }
