@@ -89,13 +89,21 @@ export const createDonation = async (req: AuthRequest, res: Response): Promise<v
   }
 };
 
+const mockPaymentSchema = z.object({
+  shouldSucceed: z.boolean().default(true),
+  paymentMode: z.enum(['UPI', 'NET_BANKING', 'DEBIT_CARD', 'CREDIT_CARD']).optional(),
+  transactionRef: z.string().optional(),
+  isForeignCard: z.boolean().default(false),
+  failureReason: z.string().optional(),
+});
+
 export const processMockPayment = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { shouldSucceed = true, paymentMode, transactionRef, isForeignCard = false } = req.body;
+    const data = mockPaymentSchema.parse(req.body || {});
 
     // Statutory Check: Foreign card contribution block
-    if (isForeignCard) {
+    if (data.isForeignCard) {
       res.status(400).json({
         success: false,
         isBlocked: true,
@@ -106,9 +114,10 @@ export const processMockPayment = async (req: AuthRequest, res: Response): Promi
     }
 
     const result = await confirmDonationPaymentAtomic(id, {
-      shouldSucceed: !!shouldSucceed,
-      paymentMode,
-      transactionRef,
+      shouldSucceed: data.shouldSucceed,
+      paymentMode: data.paymentMode,
+      transactionRef: data.transactionRef,
+      failureReason: data.failureReason,
     });
 
     res.status(200).json({
@@ -171,8 +180,12 @@ export const getDonationById = async (req: AuthRequest, res: Response): Promise<
     }
 
     // Security ownership check:
-    // If not admin, donor can only view their own donation or guest donation by matching ID
-    if (donation.donorId && req.userId && req.userRole !== 'ADMIN') {
+    // If donation belongs to a registered donor, require matching authenticated user or admin
+    if (donation.donorId && req.userRole !== 'ADMIN') {
+      if (!req.userId) {
+        res.status(401).json({ success: false, message: 'Authentication required to view this donation record' });
+        return;
+      }
       if (donation.donorId.toString() !== req.userId) {
         res.status(403).json({ success: false, message: 'Access denied to this donation record' });
         return;

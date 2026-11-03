@@ -43,8 +43,12 @@ export const getReceiptById = async (req: AuthRequest, res: Response): Promise<v
       return;
     }
 
-    // Ownership check
-    if (receipt.donorId && req.userId && req.userRole !== 'ADMIN') {
+    // Ownership check: If receipt belongs to a registered donor, require matching authenticated user or admin
+    if (receipt.donorId && req.userRole !== 'ADMIN') {
+      if (!req.userId) {
+        res.status(401).json({ success: false, message: 'Authentication required to view this receipt' });
+        return;
+      }
       if (receipt.donorId.toString() !== req.userId) {
         res.status(403).json({ success: false, message: 'Unauthorized to view this receipt' });
         return;
@@ -57,7 +61,7 @@ export const getReceiptById = async (req: AuthRequest, res: Response): Promise<v
   }
 };
 
-export const downloadReceiptPdf = async (req: Request, res: Response): Promise<void> => {
+export const downloadReceiptPdf = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
     const receipt = await Receipt.findOne({
@@ -70,6 +74,18 @@ export const downloadReceiptPdf = async (req: Request, res: Response): Promise<v
     if (!receipt) {
       res.status(404).json({ success: false, message: 'Receipt not found' });
       return;
+    }
+
+    // Ownership check: Protect sensitive PAN and donor personal address
+    if (receipt.donorId && req.userRole !== 'ADMIN') {
+      if (!req.userId) {
+        res.status(401).json({ success: false, message: 'Authentication required to download this receipt' });
+        return;
+      }
+      if (receipt.donorId.toString() !== req.userId) {
+        res.status(403).json({ success: false, message: 'Unauthorized to download this receipt' });
+        return;
+      }
     }
 
     const fileName = `Receipt_${receipt.receiptNumber.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
@@ -101,7 +117,7 @@ export const downloadReceiptPdf = async (req: Request, res: Response): Promise<v
   }
 };
 
-export const downloadCertificatePdf = async (req: Request, res: Response): Promise<void> => {
+export const downloadCertificatePdf = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
     const receipt = await Receipt.findOne({
@@ -115,6 +131,18 @@ export const downloadCertificatePdf = async (req: Request, res: Response): Promi
     if (!receipt) {
       res.status(404).json({ success: false, message: '80G Certificate not found' });
       return;
+    }
+
+    // Ownership check: Protect sensitive PAN and donor personal address
+    if (receipt.donorId && req.userRole !== 'ADMIN') {
+      if (!req.userId) {
+        res.status(401).json({ success: false, message: 'Authentication required to download this certificate' });
+        return;
+      }
+      if (receipt.donorId.toString() !== req.userId) {
+        res.status(403).json({ success: false, message: 'Unauthorized to download this certificate' });
+        return;
+      }
     }
 
     const fileName = `Certificate80G_${receipt.certificateNumber.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
@@ -152,6 +180,14 @@ export const retryPdfGeneration = async (req: AuthRequest, res: Response): Promi
     if (!receipt) {
       res.status(404).json({ success: false, message: 'Receipt not found' });
       return;
+    }
+
+    // Ownership check: only the owner or an admin can retry PDF generation
+    if (receipt.donorId && req.userRole !== 'ADMIN') {
+      if (receipt.donorId.toString() !== req.userId) {
+        res.status(403).json({ success: false, message: 'Unauthorized to manage this receipt' });
+        return;
+      }
     }
 
     receipt.generationStatus = 'PENDING';

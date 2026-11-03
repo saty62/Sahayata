@@ -78,9 +78,16 @@ export async function processPdfJob(data: PdfJobPayload): Promise<void> {
   } catch (err: any) {
     logger.error(`Failed generating PDFs for receipt ${receipt.receiptNumber}:`, err);
     receipt.retryCount = (receipt.retryCount || 0) + 1;
-    receipt.generationStatus = 'FAILED';
+    // Only permanently fail if max retry attempts reached (3)
+    if (receipt.retryCount >= 3) {
+      receipt.generationStatus = 'FAILED';
+    } else {
+      receipt.generationStatus = 'PROCESSING';
+    }
     receipt.errorMessage = err.message || 'PDF Generation failed';
-    await receipt.save();
+    if (receipt.db.readyState === 1) {
+      await receipt.save().catch(() => {});
+    }
     throw err;
   }
 }

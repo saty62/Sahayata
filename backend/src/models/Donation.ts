@@ -1,6 +1,6 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
-export type PaymentStatus = 'PENDING' | 'COMPLETED' | 'FAILED';
+export type PaymentStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 export type PaymentMode = 'UPI' | 'NET_BANKING' | 'DEBIT_CARD' | 'CREDIT_CARD';
 export type DonationType = 'ONE_TIME' | 'MONTHLY_SIMULATED';
 
@@ -52,7 +52,7 @@ const DonationSchema = new Schema<IDonation>(
     },
     paymentStatus: {
       type: String,
-      enum: ['PENDING', 'COMPLETED', 'FAILED'],
+      enum: ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'],
       default: 'PENDING',
       index: true,
     },

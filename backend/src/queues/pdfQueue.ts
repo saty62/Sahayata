@@ -4,9 +4,12 @@ import { config } from '../config';
 import { logger } from '../utils/logger';
 import { processPdfJob } from '../workers/pdfWorker';
 
+import mongoose from 'mongoose';
+
 export interface PdfJobData {
   receiptId: string;
   donationId: string;
+  attempts?: number;
 }
 
 let redisConnection: IORedis | null = null;
@@ -18,9 +21,13 @@ let isProcessingMemoryQueue = false;
 
 async function processMemoryQueue() {
   if (isProcessingMemoryQueue || memoryQueue.length === 0) return;
+  if (mongoose.connection.readyState !== 1) return; // Don't process if DB not connected
+
   isProcessingMemoryQueue = true;
 
   while (memoryQueue.length > 0) {
+    if (mongoose.connection.readyState !== 1) break;
+
     // Process up to 5 jobs concurrently in memory
     const batch = memoryQueue.splice(0, 5);
     await Promise.all(
@@ -30,6 +37,16 @@ async function processMemoryQueue() {
           await processPdfJob(jobData);
         } catch (err) {
           logger.error(`[MemoryQueue] PDF generation failed for ${jobData.receiptId}:`, err);
+          const currentAttempts = jobData.attempts || 1;
+          if (currentAttempts < 3 && mongoose.connection.readyState === 1) {
+            logger.warn(`[MemoryQueue] Re-queuing receipt ${jobData.receiptId} with backoff (attempt ${currentAttempts + 1}/3)...`);
+            setTimeout(() => {
+              if (mongoose.connection.readyState === 1) {
+                memoryQueue.push({ ...jobData, attempts: currentAttempts + 1 });
+                setImmediate(processMemoryQueue);
+              }
+            }, currentAttempts * 1000);
+          }
         }
       })
     );

@@ -89,4 +89,12 @@ describe('Schemes & Deterministic Eligibility Tests', () => {
     const matchingIds = res.body.data.matchingSchemes.map((m: any) => m.scheme.schemeId);
     expect(matchingIds).toContain('SCH-022');
   });
+
+  it('should support combined district filter and search query without query.$or collision', async () => {
+    const res = await request(app).get('/api/schemes?district=Bhopal&search=पेंशन');
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.schemes.length).toBeGreaterThan(0);
+    expect(res.body.data.schemes[0].schemeId).toBe('SCH-014');
+  });
 });

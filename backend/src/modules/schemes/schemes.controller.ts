@@ -24,24 +24,34 @@ export const getSchemes = async (req: Request, res: Response): Promise<void> => 
       query.category = category;
     }
 
+    const andConditions: any[] = [];
+
     // Filter district
     if (district && district !== 'all' && district !== 'सभी') {
-      query.$or = [
-        { districts: district },
-        { districts: 'ALL' },
-        { districts: { $size: 0 } },
-      ];
+      andConditions.push({
+        $or: [
+          { districts: district },
+          { districts: 'ALL' },
+          { districts: { $size: 0 } },
+        ],
+      });
     }
 
     // Search keyword
     if (search && typeof search === 'string' && search.trim().length > 0) {
       const searchRegex = new RegExp(search.trim(), 'i');
-      query.$or = [
-        { titleHindi: searchRegex },
-        { titleEnglish: searchRegex },
-        { schemeId: searchRegex },
-        { benefits: searchRegex },
-      ];
+      andConditions.push({
+        $or: [
+          { titleHindi: searchRegex },
+          { titleEnglish: searchRegex },
+          { schemeId: searchRegex },
+          { benefits: searchRegex },
+        ],
+      });
+    }
+
+    if (andConditions.length > 0) {
+      query.$and = andConditions;
     }
 
     const pageNum = parseInt(page as string, 10) || 1;

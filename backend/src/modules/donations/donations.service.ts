@@ -9,6 +9,8 @@ import { getFinancialYearCounterKey, getFinancialYearString } from '../../utils/
 import { enqueuePdfGeneration } from '../../queues/pdfQueue';
 import { logger } from '../../utils/logger';
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export interface PaymentConfirmationResult {
   donation: IDonation;
   receipt?: IReceipt;
@@ -18,9 +20,11 @@ export interface PaymentConfirmationResult {
 
 /**
  * Concurrency-Safe, Transactional Payment Confirmation & Atomic Receipt Numbering
- * - Concurrency Safe: Uses atomic MongoDB findOneAndUpdate with $inc for receipt sequence
+ * - Concurrency Safe: Uses atomic MongoDB state transition lock (PENDING -> PROCESSING)
+ *   to ensure exactly ONE thread allocates a sequence number, preventing sequence gaps
+ * - Single-document atomic $inc for sequence counter guarantees no race conditions
  * - Transactionally consistent: Donation status, Receipt record, and AuditLog
- * - Idempotent: Subsequent calls with same donationId or idempotencyKey return existing receipt
+ * - Idempotent: Subsequent/duplicate calls with same donationId or idempotencyKey return existing receipt
  */
 export async function confirmDonationPaymentAtomic(
   donationId: string,
@@ -59,7 +63,54 @@ export async function confirmDonationPaymentAtomic(
     };
   }
 
-  // 3. Concurrency-Safe Atomic Sequence Allocation via MongoDB findOneAndUpdate with $inc
+  // 3. Concurrency Lock for duplicate payment callbacks on the SAME donation:
+  // Atomically transition from PENDING -> PROCESSING.
+  // If another concurrent request is already confirming this donation, acquired will be null!
+  const acquired = await Donation.findOneAndUpdate(
+    { _id: donationId, paymentStatus: 'PENDING' },
+    { $set: { paymentStatus: 'PROCESSING' } },
+    { new: true }
+  );
+
+  if (!acquired) {
+    // Another concurrent request/callback is currently processing or has completed this donation.
+    // Poll up to 10 times (total ~3s) for the winner to finish.
+    for (let i = 0; i < 10; i++) {
+      await sleep(300);
+      const current = await Donation.findById(donationId);
+      if (current?.paymentStatus === 'COMPLETED') {
+        const existingReceipt = await Receipt.findOne({ donationId: current._id });
+        return {
+          donation: current,
+          receipt: existingReceipt || undefined,
+          duplicate: true,
+          message: 'Payment was already confirmed concurrently. Returned existing receipt.',
+        };
+      }
+      if (current?.paymentStatus === 'FAILED') {
+        return {
+          donation: current,
+          duplicate: false,
+          message: current.failureReason || 'Payment failed.',
+        };
+      }
+    }
+
+    // Check one final time after polling
+    const finalPoll = await Donation.findById(donationId);
+    if (finalPoll?.paymentStatus === 'COMPLETED') {
+      const existingReceipt = await Receipt.findOne({ donationId: finalPoll._id });
+      return {
+        donation: finalPoll,
+        receipt: existingReceipt || undefined,
+        duplicate: true,
+        message: 'Payment confirmed previously.',
+      };
+    }
+    throw new Error('Payment confirmation is currently being processed by another transaction. Please retry shortly.');
+  }
+
+  // 4. Concurrency-Safe Atomic Sequence Allocation via MongoDB findOneAndUpdate with $inc
   // Single document $inc is guaranteed atomic and race-condition free in MongoDB
   const date = new Date();
   const fyKey = getFinancialYearCounterKey(date);
@@ -75,28 +126,16 @@ export async function confirmDonationPaymentAtomic(
   const receiptNumber = `AC/${fyDisplay}/${seqStr}`;
   const certificateNumber = `80G/${fyDisplay}/${seqStr}`;
 
-  // 4. Execute transactional commit for Donation + Receipt + AuditLog
+  // 5. Execute transactional commit for Donation + Receipt + AuditLog
   const session = await mongoose.startSession();
 
   try {
     let finalResult: PaymentConfirmationResult | null = null;
 
     await session.withTransaction(async () => {
-      // Double-check inside transaction for idempotency
       const donation = await Donation.findById(donationId).session(session);
       if (!donation) {
         throw new Error('Donation record not found');
-      }
-
-      if (donation.paymentStatus === 'COMPLETED') {
-        const existingReceipt = await Receipt.findOne({ donationId: donation._id }).session(session);
-        finalResult = {
-          donation,
-          receipt: existingReceipt || undefined,
-          duplicate: true,
-          message: 'Payment was already confirmed previously.',
-        };
-        return;
       }
 
       // Update Donation to COMPLETED
@@ -180,6 +219,13 @@ export async function confirmDonationPaymentAtomic(
 
       return finalResult;
     }
+  } catch (error) {
+    // If the transaction fails, release the PROCESSING state lock back to PENDING so retry is possible
+    await Donation.findByIdAndUpdate(donationId, {
+      paymentStatus: 'PENDING',
+      failureReason: (error as any).message,
+    }).catch(() => {});
+    throw error;
   } finally {
     session.endSession();
   }

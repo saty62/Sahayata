@@ -12,8 +12,8 @@ const router = Router();
 
 router.get('/my', authenticate, getMyReceipts);
 router.get('/:id', optionalAuthenticate, getReceiptById);
-router.get('/:id/download', downloadReceiptPdf);
-router.get('/:id/certificate', downloadCertificatePdf);
+router.get('/:id/download', optionalAuthenticate, downloadReceiptPdf);
+router.get('/:id/certificate', optionalAuthenticate, downloadCertificatePdf);
 router.post('/:id/retry', authenticate, retryPdfGeneration);
 
 export default router;

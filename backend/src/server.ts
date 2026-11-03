@@ -1,8 +1,11 @@
 import fs from 'fs';
 
+import os from 'os';
+import path from 'path';
+
 // Set temporary directory to D: drive if available to avoid low disk space issues
+const tempDir = fs.existsSync('D:\\') ? 'D:\\temp' : os.tmpdir();
 if (fs.existsSync('D:\\')) {
-  const tempDir = 'D:\\temp';
   fs.mkdirSync(tempDir, { recursive: true });
   process.env.TEMP = tempDir;
   process.env.TMP = tempDir;
@@ -29,8 +32,6 @@ async function startDatabase() {
     logger.warn(`Could not connect to external MongoDB: ${err.message}`);
     logger.info('Starting local in-memory MongoDB Replica Set (supporting full transactions)...');
 
-    const os = await import('os');
-    const path = await import('path');
     const fallbackDbPath = path.join(tempDir, `mongo-server-${Date.now()}`);
     fs.mkdirSync(fallbackDbPath, { recursive: true });
 
